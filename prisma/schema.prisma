@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ReminderStatus {
+  SENT
+  FAILED
+}
+
+enum FrequencyType {
+  WEEKLY_DAYS
+  EVERY_N_WEEKS
+  EVERY_N_MONTHS
+  CUSTOM_DATES
+}
+
+model Zone {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  area            String?
+  deliveryAddress String
+  createdAt       DateTime @default(now())
+
+  coordinators         Coordinator[]
+  members              Member[]
+  assignments          Assignment[]
+  notificationSettings NotificationSetting[]
+
+  @@map("zones")
+}
+
+model Coordinator {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  zoneId    String   @db.Uuid
+  name      String?
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  zone Zone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@map("coordinators")
+}
+
+model Member {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  zoneId    String       @db.Uuid
+  name      String
+  email     String
+  phone     String?
+  status    MemberStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+
+  zone            Zone                  @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  assignments     Assignment[]
+  notifications   NotificationSetting[]
+  autoAssignRules AutoAssignRule[]
+
+  @@unique([zoneId, email])
+  @@index([zoneId])
+  @@map("members")
+}
+
+model Assignment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  zoneId       String   @db.Uuid
+  memberId     String   @db.Uuid
+  assignedDate DateTime @db.Date
+  createdBy    String?
+  createdAt    DateTime @default(now())
+
+  zone   Zone          @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  member Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  logs   ReminderLog[]
+
+  @@unique([zoneId, memberId, assignedDate])
+  @@index([zoneId, assignedDate])
+  @@map("assignments")
+}
+
+model NotificationSetting {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  zoneId    String   @db.Uuid
+  memberId  String?  @db.Uuid
+  triggers  Json
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  zone   Zone    @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  member Member? @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([zoneId])
+  @@index([memberId])
+  @@map("notification_settings")
+}
+
+model ReminderLog {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assignmentId String         @db.Uuid
+  sentAt       DateTime       @default(now())
+  status       ReminderStatus
+  error        String?
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId, sentAt])
+  @@map("reminder_logs")
+}
+
+model AutoAssignRule {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  memberId       String        @db.Uuid
+  frequencyType  FrequencyType
+  frequencyValue Int?
+  daysOfWeek     Int[]         @default([])
+  startDate      DateTime      @db.Date
+  endDate        DateTime?     @db.Date
+  customDates    DateTime[]    @default([]) @db.Date
+  createdAt      DateTime      @default(now())
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@map("auto_assign_rules")
+}
